@@ -1,22 +1,23 @@
 from __future__ import annotations
 
-import logging
 from typing import Iterable
 
+from app.core.logging import get_logger
+from app.models.user import User
+from app.schemas.user import UserCreate, UserUpdate
+from app.services.broker import AsyncBrokerSingleton
+from app.services.http_client import HttpClientException
+from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.user import User
-from app.schemas.user import UserCreate, UserUpdate
-from app.services.http_client import HttpClientException
-from app.services.broker import AsyncBrokerSingleton
-from app.core.logging import get_logger
-
 logger = get_logger(__name__)
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 RABBIT_DELETE_TYPE = "DELETE"
 RABBIT_UPDATE_TYPE = "UPDATE"
 RABBIT_CREATE_TYPE = "CREATE"
+
 
 def list_users(db: Session, limit: int = 50, offset: int = 0) -> Iterable[User]:
     try:
@@ -34,13 +35,16 @@ async def create_user(db: Session, payload: UserCreate) -> User:
     try:
         existing_user = db.query(User).filter_by(email=payload.email).first()
         if existing_user:
-            raise HttpClientException(message="Bad Request", server_message="Email already in use", status_code=400, url="users/")
+            raise HttpClientException(message="Bad Request", server_message="Email already in use", status_code=400,
+                                      url="users/")
 
         if not payload.email or "@" not in payload.email:
-            raise HttpClientException(message="Bad Request", server_message="Invalid email", status_code=400, url="users/")
+            raise HttpClientException(message="Bad Request", server_message="Invalid email", status_code=400,
+                                      url="users/")
 
         if not payload.username or len(payload.username) < 3:
-            raise HttpClientException(message="Bad Request", server_message="Username too short", status_code=400, url="users/")
+            raise HttpClientException(message="Bad Request", server_message="Username too short", status_code=400,
+                                      url="users/")
 
         user = User(**payload.model_dump())
         db.add(user)
@@ -58,7 +62,8 @@ async def update_user(db: Session, user_id: int, payload: UserUpdate) -> User | 
     try:
         user = db.get(User, user_id)
         if not user:
-            raise HttpClientException(message="Not Found", server_message="User not found", status_code=404, url=f"users/{user_id}")
+            raise HttpClientException(message="Not Found", server_message="User not found", status_code=404,
+                                      url=f"users/{user_id}")
         for field, value in payload.model_dump(exclude_unset=True).items():
             setattr(user, field, value)
         db.commit()
@@ -71,11 +76,10 @@ async def update_user(db: Session, user_id: int, payload: UserUpdate) -> User | 
         raise e
 
 
-
 async def change_user_password(db: Session, user_id: int, old_password: str, new_password: str) -> bool:
     try:
         user = db.get(User, user_id)
-        if not user or user.hashed_password != old_password:
+        if not user or not pwd_context.verify(old_password, user.hashed_password):
             return False
         user.hashed_password = new_password
         db.commit()
@@ -100,6 +104,7 @@ async def delete_user(db: Session, user_id: int) -> bool:
         return True
     except Exception as e:
         raise e
+
 
 async def update_services(user: User, operation: str):
     try:
