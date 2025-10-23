@@ -1,129 +1,160 @@
 from __future__ import annotations
 
+import json
+from enum import Enum
 from typing import Iterable
 
-from app.core.logging import get_logger
-from app.models.user import User
-from app.schemas.user import UserCreate, UserUpdate
-from app.services.broker import AsyncBrokerSingleton
-from app.services.http_client import HttpClientException
-from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-logger = get_logger(__name__)
-pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+from app.models.user import User
+from app.schemas.user import UserCreate, UserUpdate
+from app.services.http_client import OrientatiException
 
-RABBIT_DELETE_TYPE = "DELETE"
-RABBIT_UPDATE_TYPE = "UPDATE"
-RABBIT_CREATE_TYPE = "CREATE"
+class UserCreateErrorType(Enum):
+    INVALID_EMAIL = "invalid_email"
+    USERNAME_TAKEN = "username_taken"
+    EMAIL_TAKEN = "email_taken"
+    INVALID_PASSWORD = "invalid_password"
 
+class UserCreateError(OrientatiException):
+    def __init__(self, message: str,error_type:str = "default_error"):
+        super().__init__("Bad Request", 400, {
+            "message": message,
+            "type": error_type
+        }, "/users/create")
 
 def list_users(db: Session, limit: int = 50, offset: int = 0) -> Iterable[User]:
     try:
         stmt = select(User).limit(limit).offset(offset)
         return db.execute(stmt).scalars().all()
     except Exception as e:
-        raise e
+        raise OrientatiException(
+            exc=e,
+            url="users/list",
+        )
 
 
 def get_user(db: Session, user_id: int) -> User | None:
     return db.get(User, user_id)
 
 
-async def create_user(db: Session, payload: UserCreate) -> User:
+def create_user(db: Session, payload: UserCreate) -> User:
     try:
         existing_user = db.query(User).filter_by(email=payload.email).first()
         if existing_user:
-            raise HttpClientException(message="Bad Request", server_message="Email already in use", status_code=400,
-                                      url="users/")
-
+            raise UserCreateError(
+                message="Email already in use",
+                error_type=UserCreateErrorType.EMAIL_TAKEN.value,
+            )
+        
         if not payload.email or "@" not in payload.email:
-            raise HttpClientException(message="Bad Request", server_message="Invalid email", status_code=400,
-                                      url="users/")
+            raise UserCreateError(
+                message="Invalid email format",
+                error_type=UserCreateErrorType.INVALID_EMAIL.value,
+            )
 
         if not payload.username or len(payload.username) < 3:
-            raise HttpClientException(message="Bad Request", server_message="Username too short", status_code=400,
-                                      url="users/")
+            raise UserCreateError(
+                message="Invalid username",
+                error_type=UserCreateErrorType.USERNAME_TAKEN.value,
+            )
 
         user = User(**payload.model_dump())
         db.add(user)
         db.commit()
         db.refresh(user)
-        await update_services(user, RABBIT_CREATE_TYPE)
         return user
-    except HttpClientException as e:
+    except UserCreateError as e:
         raise e
     except Exception as e:
-        raise e
+        raise OrientatiException(
+            exc=e,
+            url="users/create",
+        )
 
 
-async def update_user(db: Session, user_id: int, payload: UserUpdate) -> User | None:
+def update_user(db: Session, user_id: int, payload: UserUpdate) -> User | None:
     try:
         user = db.get(User, user_id)
         if not user:
-            raise HttpClientException(message="Not Found", server_message="User not found", status_code=404,
-                                      url=f"users/{user_id}")
+            raise OrientatiException(
+                status_code=404,
+                message="Not Found",
+                details={"message": "User not found"},
+                url=f"users/{user_id}"
+            )
         for field, value in payload.model_dump(exclude_unset=True).items():
             setattr(user, field, value)
         db.commit()
         db.refresh(user)
-        await update_services(user, RABBIT_UPDATE_TYPE)
         return user
-    except HttpClientException as e:
+    except OrientatiException as e:
         raise e
     except Exception as e:
-        raise e
+        raise OrientatiException(
+            exc=e,
+            url=f"users/{user_id}",
+        )
+
+def upsert_user_from_event(db: Session, event_body: str) -> None:
+    """
+    Esempio di handler per evento broker.
+    Atteso un JSON tipo:
+      {"type":"user_created","user":{"id":123,"username":"x","email":"y","full_name":"..."}}
+    oppure:
+      {"type":"user_updated","user":{"id":123,...}}
+    """
+    data = json.loads(event_body)
+    user_data = data.get("user") or {}
+    if "id" not in user_data:
+        return
+
+    user = db.get(User, user_data["id"])
+    if user is None:
+        # create with explicit id to allinearsi al servizio autoritativo
+        user = User(
+            id=user_data["id"],
+            username=user_data.get("username", ""),
+            email=user_data.get("email", ""),
+            name=user_data.get("name", ""),
+            surname=user_data.get("surname", "")
+        )
+        db.add(user)
+    else:
+        user.username = user_data.get("username", user.username)
+        user.email = user_data.get("email", user.email)
+        user.name = user_data.get("name", user.name)
+        user.surname = user_data.get("surname", user.surname)
+
+    db.commit()
 
 
-async def change_user_password(db: Session, user_id: int, old_password: str, new_password: str) -> bool:
+def change_user_password(db: Session, user_id: int, old_password: str, new_password: str) -> bool:
     try:
         user = db.get(User, user_id)
-        if not user or not pwd_context.verify(old_password, user.hashed_password):
+        if not user or user.hashed_password != old_password:
             return False
         user.hashed_password = new_password
         db.commit()
-        db.refresh(user)
-        await update_services(user, RABBIT_UPDATE_TYPE)
         return True
     except Exception as e:
-        raise e
+        raise OrientatiException(
+            exc=e,
+            url=f"users/{user_id}/change_password",
+        )
 
 
-async def delete_user(db: Session, user_id: int) -> bool:
+def delete_user(db: Session, user_id: int) -> bool:
     try:
         user = db.get(User, user_id)
         if not user:
             return False
         db.delete(user)
         db.commit()
-
-        # Notifica altri servizi della cancellazione dell'utente
-        await update_services(user_id, RABBIT_DELETE_TYPE)
-
         return True
     except Exception as e:
-        raise e
-
-
-async def update_services(user: User, operation: str):
-    try:
-        broker_instance = AsyncBrokerSingleton()
-        connected = await broker_instance.connect()
-        if connected:
-            message = {
-                "id": user.id,
-                "username": user.username,
-                "email": user.email,
-                "name": user.name,
-                "surname": user.surname,
-                "hashed_password": user.hashed_password,
-                "created_at": str(user.created_at),
-                "updated_at": str(user.updated_at)
-            } if operation != RABBIT_DELETE_TYPE else {"id": user.id}
-            await broker_instance.publish_message("users", operation, message)
-        else:
-            logger.warning("Could not connect to broker.")
-    except Exception as e:
-        logger.error(f"Error updating services for user {user.id}. Operation: {operation}: {e}")
-        raise e
+        raise OrientatiException(
+            exc=e,
+            url=f"users/{user_id}/delete",
+        )

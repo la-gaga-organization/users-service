@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db
 from app.schemas.user import UserOut, UserCreate, UserUpdate, ChangePasswordRequest
 from app.services.user_service import list_users, get_user, create_user, update_user, change_user_password, delete_user
-from app.services.http_client import HttpClientException
+from app.services.http_client import OrientatiException
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -19,76 +19,77 @@ router = APIRouter()
 def api_list_users(limit: int = 50, offset: int = 0, db: Session = Depends(get_db)):
     try:
         return list_users(db, limit=limit, offset=offset)
-    except HttpClientException as e:
+    except OrientatiException as e:
         raise HTTPException(status_code=e.status_code,
-                            detail={"message": e.message, "stack": e.server_message, "url": e.url})
-    except Exception as e:
-        logger.error(f"Error listing users: {e}")
-        raise HTTPException(status_code=500, detail={"message": "Internal Server Error", "stack": "Swiggity Swoggity, U won't find my log", "url": "users/"})
-
+                            detail={"message": e.message, "details": e.details, "url": e.url})
 
 @router.get("/{user_id}", response_model=UserOut)
 def api_get_user(user_id: int, db: Session = Depends(get_db)):
     try:
         user = get_user(db, user_id)
         if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"message": "Not Found", "stack": "User not found", "url": f"users/{user_id}"})
+            raise OrientatiException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                message="Not Found",
+                details={"message": "User not found"},
+                url=f"users/{user_id}"
+            )
         return user
-    except Exception as e:
-        logger.error(f"Error getting user {user_id}: {e}")
-        raise HTTPException(status_code=500, detail={"message": "Internal Server Error", "stack": "Swiggity Swoggity, U won't find my log", "url": f"users/{user_id}"})
-
-@router.post("/", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-async def api_create_user(payload: UserCreate, db: Session = Depends(get_db)):
-    try:
-        return await create_user(db, payload)
-    except HttpClientException as e:
+    except OrientatiException as e:
         raise HTTPException(status_code=e.status_code,
-                            detail={"message": e.message, "stack": e.server_message, "url": e.url})
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
+                            detail={"message": e.message, "details": e.details, "url": e.url})
+@router.post("/", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+def api_create_user(payload: UserCreate, db: Session = Depends(get_db)):
+    try:
+        return create_user(db, payload)
+    except OrientatiException as e:
+        raise HTTPException(status_code=e.status_code,
+                            detail={"message": e.message, "details": e.details, "url": e.url})
 
 @router.patch("/{user_id}", response_model=UserOut)
-async def api_update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_db)):
+def api_update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_db)):
     try:
-        user = await update_user(db, user_id, payload)
+        user = update_user(db, user_id, payload)
         if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+            raise OrientatiException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                message="Not Found",
+                details={"message": "User not found"},
+                url=f"users/{user_id}"
+            )
         return user
-    except HttpClientException as e:
+    except OrientatiException as e:
         raise HTTPException(status_code=e.status_code,
-                            detail={"message": e.message, "stack": e.server_message, "url": e.url})
-    except Exception as e:
-        logger.error(f"Error updating user {user_id}: {e}")
-        raise HTTPException(status_code=500, detail={"message": "Internal Server Error", "stack": "Swiggity Swoggity, U won't find my log", "url": f"users/{user_id}"})
-
+                            detail={"message": e.message, "details": e.details, "url": e.url})
 
 @router.post("/change_password", status_code=status.HTTP_204_NO_CONTENT)
-async def api_change_password(
+def api_change_password(
         payload: ChangePasswordRequest,
         db: Session = Depends(get_db)
 ):
     try:
-        success = await change_user_password(db, payload.user_id, payload.old_password, payload.new_password)
+        success = change_user_password(db, payload.user_id, payload.old_password, payload.new_password)
         if not success:
-            raise HttpClientException(status_code=400, message="Bad Request", server_message="Old password is incorrect", url=f"users/change-password")
-    except HttpClientException as e:
+            raise OrientatiException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message="Bad Request",
+                details={"message": "Password change failed"},
+                url="users/change_password"
+            )
+    except OrientatiException as e:
         raise HTTPException(status_code=e.status_code,
-                            detail={"message": e.message, "stack": e.server_message, "url": e.url})
-    except Exception as e:
-        logger.error(f"Error changing password for user {payload.user_id}: {e}")
-        raise HTTPException(status_code=500, detail={"message": "Internal Server Error", "stack": "Swiggity Swoggity, U won't find my log", "url": f"users/{payload.user_id}/change-password"})
-
+                            detail={"message": e.message, "details": e.details, "url": e.url})
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def api_delete_user(user_id: int, db: Session = Depends(get_db)):
+def api_delete_user(user_id: int, db: Session = Depends(get_db)):
     try:
-        success = await delete_user(db, user_id)
+        success = delete_user(db, user_id)
         if not success:
-            raise HttpClientException(status_code=404, message="Not Found", server_message="User not found", url=f"users/{user_id}")
-    except HttpClientException as e:
+            raise OrientatiException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                message="Not Found",
+                details={"message": "User not found"},
+                url=f"users/{user_id}"
+            )
+    except OrientatiException as e:
         raise HTTPException(status_code=e.status_code,
-                            detail={"message": e.message, "stack": e.server_message, "url": e.url})
-    except Exception as e:
-        logger.error(f"Error deleting user {user_id}: {e}")
-        raise HTTPException(status_code=500, detail={"message": "Internal Server Error", "stack": "Swiggity Swoggity, U won't find my log", "url": f"users/{user_id}"})
+                            detail={"message": e.message, "details": e.details, "url": e.url})
