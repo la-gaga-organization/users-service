@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
@@ -20,8 +21,14 @@ def api_list_users(limit: int = 50, offset: int = 0, db: Session = Depends(get_d
     try:
         return list_users(db, limit=limit, offset=offset)
     except OrientatiException as e:
-        raise HTTPException(status_code=e.status_code,
-                            detail={"message": e.message, "details": e.details, "url": e.url})
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "message": e.message,
+                "details": e.details,
+                "url": e.url
+            }
+        )
 
 @router.get("/{user_id}", response_model=UserOut)
 def api_get_user(user_id: int, db: Session = Depends(get_db)):
@@ -36,15 +43,28 @@ def api_get_user(user_id: int, db: Session = Depends(get_db)):
             )
         return user
     except OrientatiException as e:
-        raise HTTPException(status_code=e.status_code,
-                            detail={"message": e.message, "details": e.details, "url": e.url})
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "message": e.message,
+                "details": e.details,
+                "url": e.url
+            }
+        )
+    
 @router.post("/", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 def api_create_user(payload: UserCreate, db: Session = Depends(get_db)):
     try:
         return create_user(db, payload)
     except OrientatiException as e:
-        raise HTTPException(status_code=e.status_code,
-                            detail={"message": e.message, "details": e.details, "url": e.url})
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "message": e.message,
+                "details": e.details,
+                "url": e.url
+            }
+        )
 
 @router.patch("/{user_id}", response_model=UserOut)
 def api_update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_db)):
@@ -59,8 +79,14 @@ def api_update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get
             )
         return user
     except OrientatiException as e:
-        raise HTTPException(status_code=e.status_code,
-                            detail={"message": e.message, "details": e.details, "url": e.url})
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "message": e.message,
+                "details": e.details,
+                "url": e.url
+            }
+        )
 
 @router.post("/change_password", status_code=status.HTTP_204_NO_CONTENT)
 def api_change_password(
@@ -77,8 +103,15 @@ def api_change_password(
                 url="users/change_password"
             )
     except OrientatiException as e:
-        raise HTTPException(status_code=e.status_code,
-                            detail={"message": e.message, "details": e.details, "url": e.url})
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "message": e.message,
+                "details": e.details,
+                "url": e.url
+            }
+        )
+    
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def api_delete_user(user_id: int, db: Session = Depends(get_db)):
     try:
@@ -91,5 +124,11 @@ def api_delete_user(user_id: int, db: Session = Depends(get_db)):
                 url=f"users/{user_id}"
             )
     except OrientatiException as e:
-        raise HTTPException(status_code=e.status_code,
-                            detail={"message": e.message, "details": e.details, "url": e.url})
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "message": e.message,
+                "details": e.details,
+                "url": e.url
+            }
+        )
