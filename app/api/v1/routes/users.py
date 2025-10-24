@@ -31,7 +31,7 @@ def api_list_users(limit: int = 50, offset: int = 0, db: Session = Depends(get_d
         )
 
 @router.get("/{user_id}", response_model=UserOut)
-def api_get_user(user_id: int, db: Session = Depends(get_db)):
+async def api_get_user(user_id: int, db: Session = Depends(get_db)):
     try:
         user = get_user(db, user_id)
         if not user:
@@ -53,9 +53,9 @@ def api_get_user(user_id: int, db: Session = Depends(get_db)):
         )
     
 @router.post("/", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-def api_create_user(payload: UserCreate, db: Session = Depends(get_db)):
+async def api_create_user(payload: UserCreate, db: Session = Depends(get_db)):
     try:
-        return create_user(db, payload)
+        return await create_user(db, payload)
     except OrientatiException as e:
         return JSONResponse(
             status_code=e.status_code,
@@ -67,9 +67,9 @@ def api_create_user(payload: UserCreate, db: Session = Depends(get_db)):
         )
 
 @router.patch("/{user_id}", response_model=UserOut)
-def api_update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_db)):
+async def api_update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_db)):
     try:
-        user = update_user(db, user_id, payload)
+        user = await update_user(db, user_id, payload)
         if not user:
             raise OrientatiException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -89,12 +89,12 @@ def api_update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get
         )
 
 @router.post("/change_password", status_code=status.HTTP_204_NO_CONTENT)
-def api_change_password(
+async def api_change_password(
         payload: ChangePasswordRequest,
         db: Session = Depends(get_db)
 ):
     try:
-        success = change_user_password(db, payload.user_id, payload.old_password, payload.new_password)
+        success = await change_user_password(db, payload.user_id, payload.old_password, payload.new_password)
         if not success:
             raise OrientatiException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -113,9 +113,9 @@ def api_change_password(
         )
     
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-def api_delete_user(user_id: int, db: Session = Depends(get_db)):
+async def api_delete_user(user_id: int, db: Session = Depends(get_db)):
     try:
-        success = delete_user(db, user_id)
+        success = await delete_user(db, user_id)
         if not success:
             raise OrientatiException(
                 status_code=status.HTTP_404_NOT_FOUND,

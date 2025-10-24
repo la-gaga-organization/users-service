@@ -10,6 +10,14 @@ from sqlalchemy.orm import Session
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
 from app.services.http_client import OrientatiException
+from app.services.broker import AsyncBrokerSingleton
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+RABBIT_DELETE_TYPE = "DELETE"
+RABBIT_UPDATE_TYPE = "UPDATE"
+RABBIT_CREATE_TYPE = "CREATE"
 
 class UserCreateErrorType(Enum):
     INVALID_EMAIL = "invalid_email"
@@ -39,7 +47,7 @@ def get_user(db: Session, user_id: int) -> User | None:
     return db.get(User, user_id)
 
 
-def create_user(db: Session, payload: UserCreate) -> User:
+async def create_user(db: Session, payload: UserCreate) -> User:
     try:
         existing_user = db.query(User).filter_by(email=payload.email).first()
         if existing_user:
@@ -64,6 +72,7 @@ def create_user(db: Session, payload: UserCreate) -> User:
         db.add(user)
         db.commit()
         db.refresh(user)
+        await update_services(user, RABBIT_CREATE_TYPE)
         return user
     except UserCreateError as e:
         raise e
@@ -74,7 +83,7 @@ def create_user(db: Session, payload: UserCreate) -> User:
         )
 
 
-def update_user(db: Session, user_id: int, payload: UserUpdate) -> User | None:
+async def update_user(db: Session, user_id: int, payload: UserUpdate) -> User | None:
     try:
         user = db.get(User, user_id)
         if not user:
@@ -88,6 +97,7 @@ def update_user(db: Session, user_id: int, payload: UserUpdate) -> User | None:
             setattr(user, field, value)
         db.commit()
         db.refresh(user)
+        await update_services(user, RABBIT_UPDATE_TYPE)
         return user
     except OrientatiException as e:
         raise e
@@ -97,46 +107,15 @@ def update_user(db: Session, user_id: int, payload: UserUpdate) -> User | None:
             url=f"users/{user_id}",
         )
 
-def upsert_user_from_event(db: Session, event_body: str) -> None:
-    """
-    Esempio di handler per evento broker.
-    Atteso un JSON tipo:
-      {"type":"user_created","user":{"id":123,"username":"x","email":"y","full_name":"..."}}
-    oppure:
-      {"type":"user_updated","user":{"id":123,...}}
-    """
-    data = json.loads(event_body)
-    user_data = data.get("user") or {}
-    if "id" not in user_data:
-        return
-
-    user = db.get(User, user_data["id"])
-    if user is None:
-        # create with explicit id to allinearsi al servizio autoritativo
-        user = User(
-            id=user_data["id"],
-            username=user_data.get("username", ""),
-            email=user_data.get("email", ""),
-            name=user_data.get("name", ""),
-            surname=user_data.get("surname", "")
-        )
-        db.add(user)
-    else:
-        user.username = user_data.get("username", user.username)
-        user.email = user_data.get("email", user.email)
-        user.name = user_data.get("name", user.name)
-        user.surname = user_data.get("surname", user.surname)
-
-    db.commit()
-
-
-def change_user_password(db: Session, user_id: int, old_password: str, new_password: str) -> bool:
+async def change_user_password(db: Session, user_id: int, old_password: str, new_password: str) -> bool:
     try:
         user = db.get(User, user_id)
         if not user or user.hashed_password != old_password:
             return False
         user.hashed_password = new_password
         db.commit()
+        db.refresh(user)
+        await update_services(user, RABBIT_UPDATE_TYPE)
         return True
     except Exception as e:
         raise OrientatiException(
@@ -145,16 +124,39 @@ def change_user_password(db: Session, user_id: int, old_password: str, new_passw
         )
 
 
-def delete_user(db: Session, user_id: int) -> bool:
+async def delete_user(db: Session, user_id: int) -> bool:
     try:
         user = db.get(User, user_id)
         if not user:
             return False
         db.delete(user)
         db.commit()
+        await update_services(user, RABBIT_DELETE_TYPE)
         return True
     except Exception as e:
         raise OrientatiException(
             exc=e,
             url=f"users/{user_id}/delete",
         )
+
+async def update_services(user: User, operation: str):
+    try:
+        broker_instance = AsyncBrokerSingleton()
+        connected = await broker_instance.connect()
+        if connected:
+            message = {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "name": user.name,
+                "surname": user.surname,
+                "hashed_password": user.hashed_password,
+                "created_at": str(user.created_at),
+                "updated_at": str(user.updated_at)
+            } if operation != RABBIT_DELETE_TYPE else {"id": user.id}
+            await broker_instance.publish_message("users", operation, message)
+        else:
+            logger.warning("Could not connect to broker.")
+    except Exception as e:
+        logger.error(f"Error updating services for user {user.id}. Operation: {operation}: {e}")
+        raise e
