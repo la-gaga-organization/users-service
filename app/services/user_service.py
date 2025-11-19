@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-import json
 from enum import Enum
 from typing import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.logging import get_logger
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
-from app.services.http_client import OrientatiException
 from app.services.broker import AsyncBrokerSingleton
-from app.core.logging import get_logger
+from app.services.http_client import OrientatiException
 
 logger = get_logger(__name__)
 
@@ -19,18 +18,20 @@ RABBIT_DELETE_TYPE = "DELETE"
 RABBIT_UPDATE_TYPE = "UPDATE"
 RABBIT_CREATE_TYPE = "CREATE"
 
+
 class UserCreateErrorType(Enum):
     INVALID_EMAIL = "invalid_email"
-    USERNAME_TAKEN = "username_taken"
     EMAIL_TAKEN = "email_taken"
     INVALID_PASSWORD = "invalid_password"
 
+
 class UserCreateError(OrientatiException):
-    def __init__(self, message: str,error_type:str = "default_error"):
+    def __init__(self, message: str, error_type: str = "default_error"):
         super().__init__("Bad Request", 400, {
             "message": message,
             "type": error_type
         }, "/users/create")
+
 
 def list_users(db: Session, limit: int = 50, offset: int = 0) -> Iterable[User]:
     try:
@@ -55,17 +56,11 @@ async def create_user(db: Session, payload: UserCreate) -> User:
                 message="Email already in use",
                 error_type=UserCreateErrorType.EMAIL_TAKEN.value,
             )
-        
+
         if not payload.email or "@" not in payload.email:
             raise UserCreateError(
                 message="Invalid email format",
                 error_type=UserCreateErrorType.INVALID_EMAIL.value,
-            )
-
-        if not payload.username or len(payload.username) < 3:
-            raise UserCreateError(
-                message="Invalid username",
-                error_type=UserCreateErrorType.USERNAME_TAKEN.value,
             )
 
         user = User(**payload.model_dump())
@@ -107,6 +102,7 @@ async def update_user(db: Session, user_id: int, payload: UserUpdate) -> User | 
             url=f"users/{user_id}",
         )
 
+
 async def change_user_password(db: Session, user_id: int, old_password: str, new_password: str) -> bool:
     try:
         user = db.get(User, user_id)
@@ -139,6 +135,7 @@ async def delete_user(db: Session, user_id: int) -> bool:
             url=f"users/{user_id}/delete",
         )
 
+
 async def update_services(user: User, operation: str):
     try:
         broker_instance = AsyncBrokerSingleton()
@@ -146,7 +143,6 @@ async def update_services(user: User, operation: str):
         if connected:
             message = {
                 "id": user.id,
-                "username": user.username,
                 "email": user.email,
                 "name": user.name,
                 "surname": user.surname,
