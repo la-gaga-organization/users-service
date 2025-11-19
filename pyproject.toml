@@ -3,7 +3,7 @@ name = "servizio-template"
 version = "0.1.0"
 description = "Template dei servizi FastAPI orientati"
 authors = [
-    {name = "Federico Zorgnotto",email = "fede.zorgnotto@gmail.com"}
+    {name = "Federico Zorgnotto",email = "f.zorgnotto.2759@vallauri.edu"}
 ]
 readme = "README.md"
 requires-python = ">=3.13,<4.0"
