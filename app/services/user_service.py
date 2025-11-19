@@ -40,7 +40,7 @@ def upsert_user_from_event(db: Session, event_body: str) -> None:
     """
     Esempio di handler per evento broker.
     Atteso un JSON tipo:
-      {"type":"user_created","user":{"id":123,"username":"x","email":"y","full_name":"..."}}
+      {"type":"user_created","user":{"id":123,"email":"y","full_name":"..."}}
     oppure:
       {"type":"user_updated","user":{"id":123,...}}
     """
@@ -54,13 +54,11 @@ def upsert_user_from_event(db: Session, event_body: str) -> None:
         # create with explicit id to allinearsi al servizio autoritativo
         user = User(
             id=user_data["id"],
-            username=user_data.get("username", ""),
             email=user_data.get("email", ""),
             full_name=user_data.get("full_name"),
         )
         db.add(user)
     else:
-        user.username = user_data.get("username", user.username)
         user.email = user_data.get("email", user.email)
         user.full_name = user_data.get("full_name", user.full_name)
 
