@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from sqlalchemy import String, DateTime, Integer, func
+from sqlalchemy import String, DateTime, Integer, func, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
@@ -11,6 +11,7 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     email: Mapped[str] = mapped_column(String(255), index=True)
+    email_verified: Mapped[bool] = mapped_column(Boolean, index=False, default=False)
     name: Mapped[str] = mapped_column(String(255), index=True)
     surname: Mapped[str] = mapped_column(String(255), index=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
