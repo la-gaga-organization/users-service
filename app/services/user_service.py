@@ -144,6 +144,7 @@ async def update_services(user: User, operation: str):
             message = {
                 "id": user.id,
                 "email": user.email,
+                "email_verified": user.email_verified,
                 "name": user.name,
                 "surname": user.surname,
                 "hashed_password": user.hashed_password,
