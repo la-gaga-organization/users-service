@@ -68,6 +68,7 @@ async def create_user(db: Session, payload: UserCreate) -> User:
         db.commit()
         db.refresh(user)
         await update_services(user, RABBIT_CREATE_TYPE)
+        await send_verification_email(user)
         return user
     except UserCreateError as e:
         raise e
@@ -156,4 +157,22 @@ async def update_services(user: User, operation: str):
             logger.warning("Could not connect to broker.")
     except Exception as e:
         logger.error(f"Error updating services for user {user.id}. Operation: {operation}: {e}")
+        raise e
+
+
+async def send_verification_email(user: User):
+    try:
+        broker_instance = AsyncBrokerSingleton()
+        connected = await broker_instance.connect()
+        if connected:
+            message = {
+                "user_id": user.id,
+                "email": user.email,
+                "name": user.name,
+            }
+            await broker_instance.publish_message("email_service", "SEND_VERIFICATION", message)
+        else:
+            logger.warning("Could not connect to broker.")
+    except Exception as e:
+        logger.error(f"Error sending verification email for user {user.id}: {e}")
         raise e
