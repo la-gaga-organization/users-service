@@ -142,7 +142,7 @@ async def api_delete_user(user_id: int, db: Session = Depends(get_db)):
 
 @router.post("/request_email_verification", status_code=status.HTTP_204_NO_CONTENT)
 async def api_request_email_verification(user_id: int, db: Session = Depends(get_db)):
-    await request_email_verification(user_id)
+    await request_email_verification(user_id, db)
 
 
 @router.post("/verify_email", status_code=status.HTTP_204_NO_CONTENT)
