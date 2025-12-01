@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import secrets
 from enum import Enum
 from typing import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_db
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.user import User
@@ -166,7 +168,7 @@ async def send_verification_email(user: User):
         broker_instance = AsyncBrokerSingleton()
         connected = await broker_instance.connect()
         if connected:
-            token = "gaga"
+            token = secrets.token_urlsafe(32)
             email_request = {
                 "to": user.email,
                 "subject": "Verifica il tuo Account Orientati",
@@ -177,6 +179,13 @@ async def send_verification_email(user: User):
                 }
             }
 
+            db = next(get_db())
+            db_user = db.query(User).filter(User.id == user.id).first()
+            db_user.email_verified = False  # TODO: considerare se controllare se è già verificato
+            db_user.verify_email_token = token
+            db_user.verify_email_token_expiration = None  # TODO: implementare conteggio tempo
+            db.commit()
+            
             await broker_instance.publish_message("email", "send_email", email_request)
         else:
             logger.warning("Could not connect to broker.")
