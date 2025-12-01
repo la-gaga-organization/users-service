@@ -6,6 +6,7 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
@@ -165,23 +166,18 @@ async def send_verification_email(user: User):
         broker_instance = AsyncBrokerSingleton()
         connected = await broker_instance.connect()
         if connected:
-
-            # email_request_data = {
-            #     "to": "email@email.com",
-            #     "subject": "Verifica il tuo Account Orientati",
-            #     "template_name": "verify_email_v1",  # Deve esistere in app/templates/auth/
-            #     "context": {
-            #         "username": "MarioRossi",
-            #         "link": "https://orientati.it/verify?token=abc-123"
-            #     }
-            # }
-
-            message = {
-                "user_id": user.id,
-                "email": user.email,
-                "name": user.name,
+            token = "gaga"
+            email_request = {
+                "to": user.email,
+                "subject": "Verifica il tuo Account Orientati",
+                "template_name": "verify_email_v1",
+                "context": {
+                    "username": f"{user.surname} {user.name}",
+                    "link": f"https://{settings.SERVER_URL}/verify?token={token}"
+                }
             }
-            await broker_instance.publish_message("email_service", "SEND_VERIFICATION", message)
+
+            await broker_instance.publish_message("email", "send_email", email_request)
         else:
             logger.warning("Could not connect to broker.")
     except Exception as e:
@@ -210,4 +206,4 @@ async def request_email_verification(user_id: int, db: Session):
 
 
 async def verify_email(token: str):
-    pass
+    print(token)
