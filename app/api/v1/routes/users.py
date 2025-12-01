@@ -2,15 +2,16 @@ from __future__ import annotations
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
-from app.schemas.user import UserOut, UserCreate, UserUpdate, ChangePasswordRequest
-from app.services.user_service import list_users, get_user, create_user, update_user, change_user_password, delete_user
-from app.services.http_client import OrientatiException
 from app.core.logging import get_logger
+from app.schemas.user import UserOut, UserCreate, UserUpdate, ChangePasswordRequest
+from app.services.http_client import OrientatiException
+from app.services.user_service import list_users, get_user, create_user, update_user, change_user_password, delete_user, \
+    request_email_verification, verify_email
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -29,6 +30,7 @@ def api_list_users(limit: int = 50, offset: int = 0, db: Session = Depends(get_d
                 "url": e.url
             }
         )
+
 
 @router.get("/{user_id}", response_model=UserOut)
 async def api_get_user(user_id: int, db: Session = Depends(get_db)):
@@ -51,7 +53,8 @@ async def api_get_user(user_id: int, db: Session = Depends(get_db)):
                 "url": e.url
             }
         )
-    
+
+
 @router.post("/", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def api_create_user(payload: UserCreate, db: Session = Depends(get_db)):
     try:
@@ -65,6 +68,7 @@ async def api_create_user(payload: UserCreate, db: Session = Depends(get_db)):
                 "url": e.url
             }
         )
+
 
 @router.patch("/{user_id}", response_model=UserOut)
 async def api_update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_db)):
@@ -87,6 +91,7 @@ async def api_update_user(user_id: int, payload: UserUpdate, db: Session = Depen
                 "url": e.url
             }
         )
+
 
 @router.post("/change_password", status_code=status.HTTP_204_NO_CONTENT)
 async def api_change_password(
@@ -111,7 +116,8 @@ async def api_change_password(
                 "url": e.url
             }
         )
-    
+
+
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def api_delete_user(user_id: int, db: Session = Depends(get_db)):
     try:
@@ -132,3 +138,13 @@ async def api_delete_user(user_id: int, db: Session = Depends(get_db)):
                 "url": e.url
             }
         )
+
+
+@router.post("/request_email_verification", status_code=status.HTTP_204_NO_CONTENT)
+async def api_request_email_verification(user_id: int, db: Session = Depends(get_db)):
+    await request_email_verification(user_id)
+
+
+@router.post("/verify_email", status_code=status.HTTP_204_NO_CONTENT)
+async def api_verify_email(token: str, db: Session = Depends(get_db)):
+    await verify_email(token)

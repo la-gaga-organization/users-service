@@ -165,6 +165,17 @@ async def send_verification_email(user: User):
         broker_instance = AsyncBrokerSingleton()
         connected = await broker_instance.connect()
         if connected:
+
+            # email_request_data = {
+            #     "to": "email@email.com",
+            #     "subject": "Verifica il tuo Account Orientati",
+            #     "template_name": "verify_email_v1",  # Deve esistere in app/templates/auth/
+            #     "context": {
+            #         "username": "MarioRossi",
+            #         "link": "https://orientati.it/verify?token=abc-123"
+            #     }
+            # }
+
             message = {
                 "user_id": user.id,
                 "email": user.email,
@@ -176,3 +187,27 @@ async def send_verification_email(user: User):
     except Exception as e:
         logger.error(f"Error sending verification email for user {user.id}: {e}")
         raise e
+
+
+async def request_email_verification(user_id: int, db: Session):
+    try:
+        user = get_user(db, user_id)
+        if not user:
+            raise OrientatiException(
+                status_code=404,
+                message="Not Found",
+                details={"message": "User not found"},
+                url=f"users/{user_id}/request_email_verification"
+            )
+        await send_verification_email(user)
+    except OrientatiException as e:
+        raise e
+    except Exception as e:
+        raise OrientatiException(
+            exc=e,
+            url=f"users/{user_id}/request_email_verification",
+        )
+
+
+async def verify_email(token: str):
+    pass
