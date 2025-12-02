@@ -186,7 +186,7 @@ async def send_verification_email(user: User):
             db_user.verify_email_token_expiration = None  # TODO: implementare conteggio tempo
             db.commit()
             
-            await broker_instance.publish_message("email", "send_email", email_request)
+            await broker_instance.publish_message("email", "email_notification", email_request, routing_key="send_email")
         else:
             logger.warning("Could not connect to broker.")
     except Exception as e:
