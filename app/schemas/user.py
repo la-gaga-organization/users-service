@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 
 
 class UserBase(BaseModel):
-    username: str
     email: EmailStr
     name: str
     surname: str
@@ -17,7 +16,6 @@ class UserCreate(UserBase):
 
 
 class UserUpdate(BaseModel):
-    username: str | None = None
     email: EmailStr | None = None
     name: str | None = None
     surname: str | None = None
@@ -25,8 +23,16 @@ class UserUpdate(BaseModel):
 
 class UserOut(UserBase):
     id: int
+    email_verified: bool
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
+
+class ChangePasswordRequest(BaseModel):
+    user_id: int
+    old_password: str
+    new_password: str
