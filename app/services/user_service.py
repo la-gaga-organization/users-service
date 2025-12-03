@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Iterable
 
@@ -183,10 +184,11 @@ async def send_verification_email(user: User):
             db_user = db.query(User).filter(User.id == user.id).first()
             db_user.email_verified = False  # TODO: considerare se controllare se è già verificato
             db_user.verify_email_token = token
-            db_user.verify_email_token_expiration = None  # TODO: implementare conteggio tempo
+            db_user.verify_email_token_expiration = datetime.now() + timedelta(minutes=30)
             db.commit()
-            
-            await broker_instance.publish_message("email", "email_notification", email_request, routing_key="send_email")
+
+            await broker_instance.publish_message("email", "email_notification", email_request,
+                                                  routing_key="send_email")
         else:
             logger.warning("Could not connect to broker.")
     except Exception as e:
@@ -215,4 +217,39 @@ async def request_email_verification(user_id: int, db: Session):
 
 
 async def verify_email(token: str):
-    print(token)
+    """
+    Verifica l'email dell'utente tramite il token passato
+    :param token:
+    :return: stato verifica
+    """
+    try:
+        db = next(get_db())
+        user = db.query(User).filter(User.verify_email_token == token).first()
+        if not user:
+            raise OrientatiException(
+                status_code=404,
+                message="Not Found",
+                details={"message": "Invalid verification token"},
+                url="users/verify_email"
+            )
+        if user.verify_email_token_expiration < datetime.now():
+            raise OrientatiException(
+                status_code=400,
+                message="Bad Request",
+                details={"message": "Verification token has expired"},
+                url="users/verify_email"
+            )
+        user.email_verified = True
+        user.verify_email_token = None
+        user.verify_email_token_expiration = None
+        db.commit()
+        db.refresh(user)
+        await update_services(user, RABBIT_UPDATE_TYPE)
+        return True
+    except OrientatiException as e:
+        raise e
+    except Exception as e:
+        raise OrientatiException(
+            exc=e,
+            url="users/verify_email",
+        )
