@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Iterable
 
@@ -232,7 +232,8 @@ async def verify_email(token: str):
                 details={"message": "Invalid verification token"},
                 url="users/verify_email"
             )
-        if user.verify_email_token_expiration < datetime.now():
+
+        if user.verify_email_token_expiration < datetime.now(timezone.utc):
             raise OrientatiException(
                 status_code=400,
                 message="Bad Request",
