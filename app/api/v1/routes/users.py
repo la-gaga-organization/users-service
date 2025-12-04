@@ -3,7 +3,9 @@ from __future__ import annotations
 from typing import List
 
 from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Body
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
@@ -141,10 +143,13 @@ async def api_delete_user(user_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/request_email_verification", status_code=status.HTTP_204_NO_CONTENT)
-async def api_request_email_verification(user_id: int, db: Session = Depends(get_db)):
+async def api_request_email_verification(
+        user_id: int = Body(..., embed=True),
+        db: Session = Depends(get_db)
+):
     await request_email_verification(user_id, db)
 
 
 @router.post("/verify_email", status_code=status.HTTP_204_NO_CONTENT)
-async def api_verify_email(token: str, db: Session = Depends(get_db)):
+async def api_verify_email(token: str = Body(..., embed=True)):
     await verify_email(token)
