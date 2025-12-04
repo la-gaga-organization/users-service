@@ -147,9 +147,29 @@ async def api_request_email_verification(
         user_id: int = Body(..., embed=True),
         db: Session = Depends(get_db)
 ):
-    await request_email_verification(user_id, db)
+    try:
+        await request_email_verification(user_id, db)
+    except OrientatiException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "message": e.message,
+                "details": e.details,
+                "url": e.url
+            }
+        )
 
 
 @router.post("/verify_email", status_code=status.HTTP_204_NO_CONTENT)
 async def api_verify_email(token: str = Body(..., embed=True)):
-    await verify_email(token)
+    try:
+        await verify_email(token)
+    except OrientatiException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "message": e.message,
+                "details": e.details,
+                "url": e.url
+            }
+        )
