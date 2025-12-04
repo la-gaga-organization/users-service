@@ -176,7 +176,7 @@ async def send_verification_email(user: User):
                 "template_name": "verify_email_v1",
                 "context": {
                     "username": f"{user.surname} {user.name}",
-                    "link": f"https://{settings.SERVER_URL}/verify?token={token}"
+                    "link": f"https://{settings.SERVER_URL}/api/v1/users/verify_email?token={token}"
                 }
             }
 
