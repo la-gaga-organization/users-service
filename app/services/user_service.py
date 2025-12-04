@@ -186,7 +186,7 @@ async def send_verification_email(user: User):
             db_user.verify_email_token = token
             db_user.verify_email_token_expiration = datetime.now() + timedelta(minutes=30)
             db.commit()
-
+            await update_services(db_user, RABBIT_UPDATE_TYPE)
             await broker_instance.publish_message("email", "email_notification", email_request,
                                                   routing_key="send_email")
         else:
